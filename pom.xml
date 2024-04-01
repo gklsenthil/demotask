@@ -12,6 +12,7 @@
 	<groupId>com.example.demo</groupId>
 	<artifactId>Customer-Management-Application</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+	<packaging>war</packaging>
 	<name>Customer-Management-Application</name>
 	<description>Demo project for Spring Boot</description>
 	<properties>
