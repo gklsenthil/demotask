@@ -19,3 +19,6 @@ jobs:
           -H "Authorization: Bearer $GITHUB_TOKEN" \
           https://api.github.com/repos/gklsenthil/e-commerce/actions/workflows/run-tests.yml/dispatches \
           -d '{"ref":"main"}'
+
+      - name: Log API Response
+        run: echo "Triggered workflow successfully!"
