@@ -18,7 +18,6 @@ jobs:
         run: |
           # Record the timestamp when triggering the workflow
           START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "Start time: $START_TIME"
           echo "start_time=$START_TIME" >> $GITHUB_ENV
           
           # Trigger the workflow
@@ -28,49 +27,42 @@ jobs:
             https://api.github.com/repos/gklsenthil/e-commerce/actions/workflows/run-tests.yml/dispatches \
             -d '{"ref":"main"}'
 
-      # Step 2: Wait for Workflow Run to Complete Dynamically
+      # Step 2: Wait for Workflow Completion
       - name: Wait for Workflow Run to Complete
-        id: wait_for_workflow
         env:
           TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           START_TIME: ${{ env.start_time }}
         run: |
-          echo "Waiting for the workflow run to complete dynamically..."
+          echo "Waiting for the triggered workflow to complete..."
 
           while true; do
-            # Fetch workflow runs
-            API_RESPONSE=$(curl -s \
+            # Fetch the most recent workflow run
+            WORKFLOW_RUN=$(curl -s \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $TOKEN" \
-              https://api.github.com/repos/gklsenthil/e-commerce/actions/runs)
-
-            echo "Raw API Response: $API_RESPONSE"
-
-            # Extract workflow run
-            WORKFLOW_RUN=$(echo "$API_RESPONSE" | jq -r --arg START_TIME "$START_TIME" '
-              if .workflow_runs then
+              https://api.github.com/repos/gklsenthil/e-commerce/actions/runs | \
+              jq -r --arg START_TIME "$START_TIME" '
                 .workflow_runs[] 
                 | select(.head_branch=="main" 
                 and .event=="workflow_dispatch" 
                 and .created_at > $START_TIME) 
-                | {id: .id, status: .status, conclusion: .conclusion} | @json
-              else
-                null
-              end' | head -n 1)
+                | {id: .id, status: .status, conclusion: .conclusion} | @json' | head -n 1)
 
+            # Check if a valid workflow run is found
             if [ -z "$WORKFLOW_RUN" ]; then
-              echo "No matching workflow run found. Retrying in 30 seconds..."
+              echo "No matching workflow run found yet. Retrying in 30 seconds..."
               sleep 30
               continue
             fi
 
-            # Parse the workflow run information
-            RUN_ID=$(echo "$WORKFLOW_RUN" | jq -r '.id // empty')
-            STATUS=$(echo "$WORKFLOW_RUN" | jq -r '.status // empty')
-            CONCLUSION=$(echo "$WORKFLOW_RUN" | jq -r '.conclusion // empty')
+            # Extract details from the workflow run
+            RUN_ID=$(echo "$WORKFLOW_RUN" | jq -r '.id')
+            STATUS=$(echo "$WORKFLOW_RUN" | jq -r '.status')
+            CONCLUSION=$(echo "$WORKFLOW_RUN" | jq -r '.conclusion')
 
             echo "Workflow Run ID: $RUN_ID, Status: $STATUS, Conclusion: $CONCLUSION"
 
+            # Check if the workflow is complete
             if [ "$STATUS" == "completed" ]; then
               if [ "$CONCLUSION" == "success" ]; then
                 echo "Workflow completed successfully."
@@ -84,34 +76,3 @@ jobs:
             echo "Workflow still in progress. Retrying in 30 seconds..."
             sleep 30
           done
-
-      # Step 3: Poll for Workflow Status
-      - name: Poll Workflow Status
-        env:
-          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          RUN_ID: ${{ env.run_id }}
-        run: |
-          echo "Polling for the workflow status..."
-          for i in {1..30}; do
-            STATUS=$(curl -s \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer $TOKEN" \
-              https://api.github.com/repos/gklsenthil/e-commerce/actions/runs/$RUN_ID \
-              | jq -r '.conclusion')
-      
-            echo "Current Status: $STATUS"
-      
-            if [ "$STATUS" == "success" ]; then
-              echo "Workflow completed successfully."
-              exit 0
-            elif [ "$STATUS" == "failure" ]; then
-              echo "Workflow failed."
-              exit 1
-            fi
-      
-            echo "Workflow still in progress. Retrying in 20 seconds..."
-            sleep 20
-          done
-      
-          echo "Timed out while waiting for workflow to complete."
-          exit 1
