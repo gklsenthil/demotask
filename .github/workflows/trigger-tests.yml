@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Trigger Testing Workflow
       - name: Trigger Testing Workflow
         env:
           TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
@@ -20,24 +21,51 @@ jobs:
           https://api.github.com/repos/gklsenthil/e-commerce/actions/workflows/run-tests.yml/dispatches \
           -d '{"ref":"main"}'
 
-      - name: Log API Response
-        run: echo "Triggered workflow successfully!"
-
-      - name: Check Workflow Run Status
-        id: check_status
+      # Step 2: Wait for Workflow Run to Appear
+      - name: Wait for Workflow Run to Start
+        id: get_workflow_run_id
         env:
           TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
-          # Poll the GitHub API to check workflow status
-          echo "Checking the status of the triggered workflow..."
+          echo "Waiting for the triggered workflow run to start..."
           for i in {1..10}; do
-            STATUS=$(curl -s -H "Accept: application/vnd.github+json" \
-                         -H "Authorization: Bearer $TOKEN" \
-                         https://api.github.com/repos/gklsenthil/e-commerce/actions/runs \
-                         | jq -r '.workflow_runs[] | select(.head_branch=="main" and .name=="Run Integration Tests") | .conclusion' | head -n 1)
-            
+            WORKFLOW_RUN_ID=$(curl -s \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $TOKEN" \
+              https://api.github.com/repos/gklsenthil/e-commerce/actions/runs \
+              | jq -r '.workflow_runs[] | select(.head_branch=="main" and .name=="Run Integration Tests") | .id' | head -n 1)
+      
+            if [ -n "$WORKFLOW_RUN_ID" ]; then
+              echo "Found workflow run ID: $WORKFLOW_RUN_ID"
+              echo "run_id=$WORKFLOW_RUN_ID" >> $GITHUB_ENV
+              break
+            fi
+      
+            echo "Workflow run not found. Retrying in 10 seconds..."
+            sleep 10
+          done
+      
+          if [ -z "$WORKFLOW_RUN_ID" ]; then
+            echo "Failed to find the workflow run after 10 attempts."
+            exit 1
+          fi
+
+      # Step 3: Poll for Workflow Status
+      - name: Poll Workflow Status
+        env:
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          RUN_ID: ${{ env.run_id }}
+        run: |
+          echo "Polling for the workflow status..."
+          for i in {1..30}; do
+            STATUS=$(curl -s \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $TOKEN" \
+              https://api.github.com/repos/gklsenthil/e-commerce/actions/runs/$RUN_ID \
+              | jq -r '.conclusion')
+      
             echo "Current Status: $STATUS"
-            
+      
             if [ "$STATUS" == "success" ]; then
               echo "Workflow completed successfully."
               exit 0
@@ -45,10 +73,10 @@ jobs:
               echo "Workflow failed."
               exit 1
             fi
-            
-            echo "Workflow still in progress. Retrying in 30 seconds..."
-            sleep 30
+      
+            echo "Workflow still in progress. Retrying in 20 seconds..."
+            sleep 20
           done
-            
+      
           echo "Timed out while waiting for workflow to complete."
           exit 1
