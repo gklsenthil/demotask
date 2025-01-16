@@ -10,26 +10,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Trigger Testing Workflow
+      # Step 1: Trigger the 'run-tests.yml' Workflow
       - name: Trigger Testing Workflow
+        id: trigger_workflow
         env:
           TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
+          # Record the timestamp when triggering the workflow
+          START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "Start time: $START_TIME"
+          echo "start_time=$START_TIME" >> $GITHUB_ENV
+          
+          # Trigger the workflow
           curl -X POST \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer $TOKEN" \
-          https://api.github.com/repos/gklsenthil/e-commerce/actions/workflows/run-tests.yml/dispatches \
-          -d '{"ref":"main"}'
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $TOKEN" \
+            https://api.github.com/repos/gklsenthil/e-commerce/actions/workflows/run-tests.yml/dispatches \
+            -d '{"ref":"main"}'
 
-      # Step 2: Wait for Workflow Run to Complete
+      # Step 2: Wait for Workflow Run to Complete Dynamically
       - name: Wait for Workflow Run to Complete
         id: wait_for_workflow
         env:
           TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           START_TIME: ${{ env.start_time }}
         run: |
-          echo "Waiting for the workflow run to complete..."
-          for i in {1..30}; do
+          echo "Waiting for the workflow run to complete dynamically..."
+          
+          while true; do
             # Fetch the workflow run dynamically
             WORKFLOW_RUN=$(curl -s \
               -H "Accept: application/vnd.github+json" \
@@ -41,14 +49,14 @@ jobs:
                   and .event=="workflow_dispatch" 
                   and .created_at > $START_TIME) 
                   | {id: .id, status: .status, conclusion: .conclusion}' | head -n 1)
-      
+          
             # Parse the workflow run information
             RUN_ID=$(echo "$WORKFLOW_RUN" | jq -r '.id')
             STATUS=$(echo "$WORKFLOW_RUN" | jq -r '.status')
             CONCLUSION=$(echo "$WORKFLOW_RUN" | jq -r '.conclusion')
-      
+          
             echo "Workflow Run ID: $RUN_ID, Status: $STATUS, Conclusion: $CONCLUSION"
-      
+          
             if [ "$STATUS" == "completed" ]; then
               if [ "$CONCLUSION" == "success" ]; then
                 echo "Workflow completed successfully."
@@ -58,13 +66,10 @@ jobs:
                 exit 1
               fi
             fi
-      
-            echo "Workflow still in progress. Retrying in 20 seconds..."
-            sleep 20
+          
+            echo "Workflow still in progress. Retrying in 30 seconds..."
+            sleep 30
           done
-      
-          echo "Timed out while waiting for workflow to complete."
-          exit 1
 
       # Step 3: Poll for Workflow Status
       - name: Poll Workflow Status
