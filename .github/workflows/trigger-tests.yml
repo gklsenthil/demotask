@@ -22,3 +22,33 @@ jobs:
 
       - name: Log API Response
         run: echo "Triggered workflow successfully!"
+
+      - name: Check Workflow Run Status
+        id: check_status
+        env:
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          # Poll the GitHub API to check workflow status
+          echo "Checking the status of the triggered workflow..."
+          for i in {1..10}; do
+            STATUS=$(curl -s -H "Accept: application/vnd.github+json" \
+                         -H "Authorization: Bearer $TOKEN" \
+                         https://api.github.com/repos/gklsenthil/e-commerce/actions/runs \
+                         | jq -r '.workflow_runs[] | select(.head_branch=="main" and .name=="Run Integration Tests") | .conclusion' | head -n 1)
+            
+            echo "Current Status: $STATUS"
+            
+            if [ "$STATUS" == "success" ]; then
+              echo "Workflow completed successfully."
+              exit 0
+            elif [ "$STATUS" == "failure" ]; then
+              echo "Workflow failed."
+              exit 1
+            fi
+            
+            echo "Workflow still in progress. Retrying in 30 seconds..."
+            sleep 30
+          done
+            
+          echo "Timed out while waiting for workflow to complete."
+          exit 1
