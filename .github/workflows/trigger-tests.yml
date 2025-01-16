@@ -36,27 +36,41 @@ jobs:
           START_TIME: ${{ env.start_time }}
         run: |
           echo "Waiting for the workflow run to complete dynamically..."
-          
+
           while true; do
-            # Fetch the workflow run dynamically
-            WORKFLOW_RUN=$(curl -s \
+            # Fetch workflow runs
+            API_RESPONSE=$(curl -s \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $TOKEN" \
-              https://api.github.com/repos/gklsenthil/e-commerce/actions/runs \
-              | jq -r --arg START_TIME "$START_TIME" \
-                '.workflow_runs[] 
-                  | select(.head_branch=="main" 
-                  and .event=="workflow_dispatch" 
-                  and .created_at > $START_TIME) 
-                  | {id: .id, status: .status, conclusion: .conclusion}' | head -n 1)
-          
+              https://api.github.com/repos/gklsenthil/e-commerce/actions/runs)
+
+            echo "Raw API Response: $API_RESPONSE"
+
+            # Extract workflow run
+            WORKFLOW_RUN=$(echo "$API_RESPONSE" | jq -r --arg START_TIME "$START_TIME" '
+              if .workflow_runs then
+                .workflow_runs[] 
+                | select(.head_branch=="main" 
+                and .event=="workflow_dispatch" 
+                and .created_at > $START_TIME) 
+                | {id: .id, status: .status, conclusion: .conclusion} | @json
+              else
+                null
+              end' | head -n 1)
+
+            if [ -z "$WORKFLOW_RUN" ]; then
+              echo "No matching workflow run found. Retrying in 30 seconds..."
+              sleep 30
+              continue
+            fi
+
             # Parse the workflow run information
-            RUN_ID=$(echo "$WORKFLOW_RUN" | jq -r '.id')
-            STATUS=$(echo "$WORKFLOW_RUN" | jq -r '.status')
-            CONCLUSION=$(echo "$WORKFLOW_RUN" | jq -r '.conclusion')
-          
+            RUN_ID=$(echo "$WORKFLOW_RUN" | jq -r '.id // empty')
+            STATUS=$(echo "$WORKFLOW_RUN" | jq -r '.status // empty')
+            CONCLUSION=$(echo "$WORKFLOW_RUN" | jq -r '.conclusion // empty')
+
             echo "Workflow Run ID: $RUN_ID, Status: $STATUS, Conclusion: $CONCLUSION"
-          
+
             if [ "$STATUS" == "completed" ]; then
               if [ "$CONCLUSION" == "success" ]; then
                 echo "Workflow completed successfully."
@@ -66,7 +80,7 @@ jobs:
                 exit 1
               fi
             fi
-          
+
             echo "Workflow still in progress. Retrying in 30 seconds..."
             sleep 30
           done
