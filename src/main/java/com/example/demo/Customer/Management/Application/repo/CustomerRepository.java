@@ -12,5 +12,5 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 	@Query("select c from Customer c order by c.customerId limit ?1 offset ?2")
 	List<Customer> getCustomerList(int limit, int offset);
 
-	
+
 }

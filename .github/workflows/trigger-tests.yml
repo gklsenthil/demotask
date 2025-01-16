@@ -26,6 +26,7 @@ jobs:
         id: get_workflow_run_id
         env:
           TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          START_TIME: ${{ env.start_time }}
         run: |
           echo "Waiting for the triggered workflow run to start..."
           for i in {1..10}; do
@@ -33,7 +34,12 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $TOKEN" \
               https://api.github.com/repos/gklsenthil/e-commerce/actions/runs \
-              | jq -r '.workflow_runs[] | select(.head_branch=="main" and .name=="Run Integration Tests") | .id' | head -n 1)
+              | jq -r --arg START_TIME "$START_TIME" \
+                '.workflow_runs[] 
+                  | select(.head_branch=="main" 
+                  and .name=="Run Integration Tests" 
+                  and .created_at > $START_TIME) 
+                  | .id' | head -n 1)
       
             if [ -n "$WORKFLOW_RUN_ID" ]; then
               echo "Found workflow run ID: $WORKFLOW_RUN_ID"
